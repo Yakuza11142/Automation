@@ -11,8 +11,7 @@ class VoiceCommandListener:
 
     def start_listening(self):
         self.running = True
-        print("[VoiceListener] Always-on voice listener service active.")
-        print("[VoiceListener] Listening for voice commands (e.g., 'Call NITDA')...")
+        print("[VoiceListener Offline] Service running locally.")
 
         try:
             import speech_recognition as sr
@@ -23,28 +22,26 @@ class VoiceCommandListener:
                 while self.running:
                     try:
                         audio = recognizer.listen(source, timeout=3, phrase_time_limit=5)
-                        text = recognizer.recognize_google(audio).lower()
-                        print(f"[VoiceListener] Heard: '{text}'")
+                        
+                        # Offline recognition via local Sphinx/Vosk engine
+                        try:
+                            text = recognizer.recognize_sphinx(audio).lower()
+                        except Exception:
+                            text = ""
 
                         if "call" in text:
                             match = re.search(r"call\s+([a-zA-Z0-9\s]+)", text)
                             if match:
                                 target_name = match.group(1).strip()
-                                print(f"[VoiceListener] Searching contact for: '{target_name}'")
                                 number = self.contacts_manager.search_contact(target_name)
                                 if number:
                                     self.sim_handler.dial_number(number)
-                                else:
-                                    print(f"[VoiceListener] Contact '{target_name}' not found.")
                     except sr.WaitTimeoutError:
                         continue
-                    except sr.UnknownValueError:
-                        continue
                     except Exception as e:
-                        print(f"[VoiceListener Error] {e}")
                         time.sleep(1)
-        except ImportError:
-            print("[VoiceListener Standby] SpeechRecognition module not installed.")
+        except Exception as e:
+            print(f"[VoiceListener Local Standby] {e}")
 
     def stop_listening(self):
         self.running = False
