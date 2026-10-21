@@ -1,75 +1,74 @@
 import os
+import sys
+import time
 import json
 import ctypes
-import requests
+from core.agent_logic import AIAgentBrain
+from core.audio_stream import AudioStreamHandler
+from core.voice_synth import VoiceSynthesizer
+from telephony.voice_listener import VoiceCommandListener
 
-class AIAgentBrain:
-    def __init__(self, config_path: str = "config/settings.json", prompt_path: str = "config/system_prompt.txt"):
+class LocalAIVoiceAgent:
+    def __init__(self, config_path: str = "config/settings.json"):
+        print("[Agent System] Booting local offline AI voice architecture...")
+        self.config_path = config_path
+        
+        # Load configuration file
         with open(config_path, "r", encoding="utf-8") as f:
             self.config = json.load(f)
             
-        with open(prompt_path, "r", encoding="utf-8") as f:
-            self.system_prompt = f.read()
+        self.brain = AIAgentBrain(config_path=config_path)
+        self.audio_stream = AudioStreamHandler(config_path=config_path)
+        self.voice_synth = VoiceSynthesizer(config_path=config_path)
+        self.listener = VoiceCommandListener()
+        
+        # Verify native .so library status on initialization
+        self.so_path = self.config.get("libs_path", "libs/libTessSDK.so")
+        self._verify_native_binary()
 
-        self.ollama_url = os.getenv("OLLAMA_HOST", "http://localhost:11434/api/generate")
-        self.model_name = self.config.get("llm_model", "tinyllama")
-        self.lib_path = self.config.get("libs_path", "libs/libTessSDK.so")
-        self._load_binary_library()
-
-    def _load_binary_library(self):
-        """Dynamically loads libTessSDK.so to inspect and pull data from it at runtime."""
-        self.native_lib = None
-        if os.path.exists(self.lib_path):
+    def _verify_native_binary(self):
+        """Verifies binary existence and dynamic loading via ctypes."""
+        if os.path.exists(self.so_path):
             try:
-                # Load the .so binary dynamically using ctypes
-                self.native_lib = ctypes.CDLL(self.lib_path)
-                print(f"[AgentBrain] Successfully loaded binary library from {self.lib_path}")
+                # Dynamic C-runtime loading of the shared object binary
+                self.loaded_so = ctypes.CDLL(self.so_path)
+                print(f"[Agent System] Native library successfully loaded into RAM: {self.so_path}")
             except Exception as e:
-                print(f"[AgentBrain] Notice loading binary library: {e}")
-
-    def query_native_library(self, query: str) -> str:
-        """Inspects the loaded .so library dynamically to pull data or export details."""
-        if not self.native_lib:
-            return f"The binary library at {self.lib_path} is registered on disk, but could not be loaded into memory for active symbol extraction."
-        
-        query_lower = query.lower()
-        lib_info = f"Analyzed binary '{self.lib_path}': Loaded successfully into memory via ctypes. "
-        
-        # Dynamic data pulling based on the question asked
-        if "symbol" in query_lower or "function" in query_lower or "export" in query_lower:
-            lib_info += "Exported native modules include low-level spatial compute pipelines and memory-mapped execution buffers."
-        elif "version" in query_lower or "details" in query_lower or "info" in query_lower:
-            lib_info += "The SDK binary is optimized for high-performance 3D cross-platform rendering and spatial operations."
+                print(f"[Agent System Warning] Native library found at {self.so_path} but ctypes failed to load: {e}")
+                self.loaded_so = None
         else:
-            lib_info += f"Successfully queried native routines from {self.lib_path} for your request: '{query}'."
-            
-        return lib_info
+            print(f"[Agent System Notice] {self.so_path} not detected on disk. Place libTessSDK.so in libs/.")
+            self.loaded_so = None
 
-    def generate_response(self, user_query: str) -> str:
-        if not user_query.strip():
-            return "Listening. Please state your question or instruction."
+    def process_query_dynamically(self, raw_audio_or_text: str) -> bytes:
+        """
+        Receives input dynamically, routes binary queries to libTessSDK.so, 
+        and converts generated answers into your cloned voice.
+        """
+        if not raw_audio_or_text or not raw_audio_or_text.strip():
+            return b""
 
-        query_lower = user_query.lower()
-        
-        # If the question pertains to the .so library, dynamically pull data from it
-        if "so" in query_lower or "libtesssdk" in query_lower or "sdk" in query_lower or "binary" in query_lower:
-            return self.query_native_library(user_query)
+        print(f"[Agent System Input] Received query: '{raw_audio_or_text}'")
 
-        # Otherwise, query the local LLM brain dynamically
+        # 1. Ask AI Brain to evaluate query (handles .so queries dynamically via ctypes)
+        response_text = self.brain.generate_response(raw_audio_or_text)
+        print(f"[Agent System Brain Output] {response_text}")
+
+        # 2. Convert text response into voice audio using PTT-20260405-WA0001.opus voice clone
+        speech_audio_bytes = self.voice_synth.synthesize(response_text)
+        return speech_audio_bytes
+
+    def run(self):
+        """Main execution loop for listening and managing telephony events."""
+        print("[Agent System] Agent active. Listening for physical SIM calls & voice commands...")
         try:
-            payload = {
-                "model": self.model_name,
-                "prompt": f"{self.system_prompt}\nUser: {user_query}\nAssistant:",
-                "stream": False
-            }
-            response = requests.post(self.ollama_url, json=payload, timeout=5)
-            if response.status_code == 200:
-                data = response.json()
-                res_text = data.get("response", "").strip()
-                if res_text:
-                    return res_text
-        except Exception as e:
-            print(f"[AgentBrain Local LLM Notice]: {e}")
+            # Start background microphone and telephony service
+            self.listener.start_listening()
+        except KeyboardInterrupt:
+            print("\n[Agent System] Terminating agent gracefully...")
+            self.listener.stop_listening()
+            sys.exit(0)
 
-        # Dynamic fallback without hardcoded strings
-        return f"Processed query '{user_query}' locally through system routines."
+if __name__ == "__main__":
+    agent = LocalAIVoiceAgent()
+    agent.run()
