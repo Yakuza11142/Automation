@@ -1,7 +1,8 @@
 {
   "stt_engine": "vosk",
-  "tts_engine": "pyttsx3",
+  "tts_engine": "xtts",
   "llm_model": "ollama/tinyllama",
+  "voice_sample_file": "PTT-20260405-WA0001.opus",
   "port": 8000,
   "libs_path": "libs/libTessSDK.so",
   "log_file": "logs/call_history.log"
