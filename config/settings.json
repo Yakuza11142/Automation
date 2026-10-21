@@ -1,0 +1,8 @@
+{
+  "stt_engine": "vosk",
+  "tts_engine": "pyttsx3",
+  "llm_model": "ollama/tinyllama",
+  "port": 8000,
+  "libs_path": "libs/libTessSDK.so",
+  "log_file": "logs/call_history.log"
+}
